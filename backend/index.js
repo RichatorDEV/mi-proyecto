@@ -35,6 +35,29 @@ async function initializeDatabase() {
                 text TEXT NOT NULL,
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+
+            CREATE TABLE IF NOT EXISTS groups (
+                group_id SERIAL PRIMARY KEY,
+                group_name TEXT UNIQUE NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS group_members (
+                group_id INTEGER,
+                username TEXT,
+                PRIMARY KEY (group_id, username),
+                FOREIGN KEY (group_id) REFERENCES groups(group_id),
+                FOREIGN KEY (username) REFERENCES users(username)
+            );
+
+            CREATE TABLE IF NOT EXISTS group_messages (
+                id SERIAL PRIMARY KEY,
+                group_id INTEGER,
+                sender TEXT,
+                text TEXT NOT NULL,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (group_id) REFERENCES groups(group_id),
+                FOREIGN KEY (sender) REFERENCES users(username)
+            );
         `);
         console.log('Tablas creadas o verificadas con éxito');
     } catch (err) {
@@ -187,6 +210,82 @@ app.get('/messages/:sender/:receiver', async (req, res) => {
         res.json(result.rows);
     } catch (err) {
         console.error('Error en /messages/:sender/:receiver:', err.message);
+        res.status(500).json({ error: 'Error interno del servidor' });
+    }
+});
+
+// Crear un grupo
+app.post('/groups', async (req, res) => {
+    const { group_name, members, creator } = req.body;
+    try {
+        // Crear el grupo
+        const groupResult = await pool.query(
+            'INSERT INTO groups (group_name) VALUES ($1) RETURNING group_id',
+            [group_name]
+        );
+        const group_id = groupResult.rows[0].group_id;
+
+        // Añadir miembros (incluyendo al creador)
+        const allMembers = [...members, creator];
+        for (const member of allMembers) {
+            await pool.query(
+                'INSERT INTO group_members (group_id, username) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+                [group_id, member]
+            );
+        }
+
+        res.json({ group_id, group_name });
+    } catch (err) {
+        console.error('Error en /groups:', err.message);
+        if (err.code === '23505') {
+            res.status(400).json({ error: 'El nombre del grupo ya existe' });
+        } else {
+            res.status(500).json({ error: 'Error interno del servidor: ' + err.message });
+        }
+    }
+});
+
+// Obtener grupos de un usuario
+app.get('/groups/:username', async (req, res) => {
+    const { username } = req.params;
+    try {
+        const result = await pool.query(
+            'SELECT g.group_id, g.group_name FROM groups g JOIN group_members gm ON g.group_id = gm.group_id WHERE gm.username = $1',
+            [username]
+        );
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error en /groups/:username:', err.message);
+        res.status(500).json({ error: 'Error interno del servidor' });
+    }
+});
+
+// Enviar mensaje a un grupo
+app.post('/group_messages', async (req, res) => {
+    const { group_id, sender, text } = req.body;
+    try {
+        const result = await pool.query(
+            'INSERT INTO group_messages (group_id, sender, text) VALUES ($1, $2, $3) RETURNING *',
+            [group_id, sender, text]
+        );
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error('Error en /group_messages:', err.message);
+        res.status(500).json({ error: 'Error interno del servidor' });
+    }
+});
+
+// Obtener mensajes de un grupo
+app.get('/group_messages/:group_id', async (req, res) => {
+    const { group_id } = req.params;
+    try {
+        const result = await pool.query(
+            'SELECT * FROM group_messages WHERE group_id = $1 ORDER BY timestamp',
+            [group_id]
+        );
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error en /group_messages/:group_id:', err.message);
         res.status(500).json({ error: 'Error interno del servidor' });
     }
 });
