@@ -1,8 +1,44 @@
 const express = require('express');
 const pool = require('./db');
+const path = require('path');
 const app = express();
 
 app.use(express.json());
+app.use(express.static(path.join(__dirname, '../frontend')));
+
+// Inicializar las tablas con SERIAL para autoincremento
+async function initializeDatabase() {
+    try {
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                username TEXT UNIQUE NOT NULL,
+                password TEXT NOT NULL,
+                profile_pic TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS contacts (
+                id SERIAL PRIMARY KEY,
+                username TEXT NOT NULL,
+                contact TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS messages (
+                id SERIAL PRIMARY KEY,
+                sender TEXT NOT NULL,
+                receiver TEXT NOT NULL,
+                text TEXT NOT NULL,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+        console.log('Tablas creadas o verificadas con éxito');
+    } catch (err) {
+        console.error('Error al inicializar la base de datos:', err.message);
+    }
+}
+
+// Ejecutar la inicialización al arrancar
+initializeDatabase();
 
 // Registro de usuario
 app.post('/register', async (req, res) => {
@@ -90,6 +126,11 @@ app.get('/messages/:sender/:receiver', async (req, res) => {
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
+});
+
+// Servir el frontend
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../frontend/index.html'));
 });
 
 const PORT = process.env.PORT || 3000;
