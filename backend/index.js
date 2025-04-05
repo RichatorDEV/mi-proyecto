@@ -219,11 +219,14 @@ app.get('/messages/:sender/:receiver', async (req, res) => {
 
 // Crear un grupo
 app.post('/groups', async (req, res) => {
-    const { group_name, members, creator } = req.body;
+    const { group_name, members, creator, group_pic } = req.body;
+    if (!group_pic) {
+        return res.status(400).json({ error: 'La foto del grupo es obligatoria' });
+    }
     try {
         const groupResult = await pool.query(
-            'INSERT INTO groups (group_name, creator) VALUES ($1, $2) RETURNING group_id',
-            [group_name, creator]
+            'INSERT INTO groups (group_name, creator, group_pic) VALUES ($1, $2, $3) RETURNING group_id',
+            [group_name, creator, group_pic]
         );
         const group_id = groupResult.rows[0].group_id;
 
@@ -294,23 +297,29 @@ app.get('/group_messages/:group_id', async (req, res) => {
 // Actualizar foto del grupo
 app.post('/group-pic', async (req, res) => {
     const { group_id, group_pic, username } = req.body;
-    console.log('Datos recibidos en /group-pic:', { group_id, group_pic: group_pic ? 'base64 data' : 'null', username });
+    console.log('Datos recibidos en /group-pic:', { 
+        group_id, 
+        group_pic_length: group_pic ? group_pic.length : 'null', 
+        username 
+    });
     try {
         const creatorCheck = await pool.query(
             'SELECT creator FROM groups WHERE group_id = $1',
             [group_id]
         );
         if (creatorCheck.rows.length === 0) {
+            console.log('Grupo no encontrado para group_id:', group_id);
             return res.status(404).json({ error: 'Grupo no encontrado' });
         }
         if (creatorCheck.rows[0].creator !== username) {
+            console.log('Usuario no autorizado:', username, 'Creador:', creatorCheck.rows[0].creator);
             return res.status(403).json({ error: 'Solo el creador puede modificar el grupo' });
         }
         const result = await pool.query(
             'UPDATE groups SET group_pic = $1 WHERE group_id = $2 RETURNING *',
             [group_pic, group_id]
         );
-        console.log('Resultado de la actualización:', result.rows[0]);
+        console.log('Foto actualizada con éxito:', result.rows[0]);
         res.json(result.rows[0]);
     } catch (err) {
         console.error('Error en /group-pic:', err.message);
