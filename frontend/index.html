@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plataforma de Mensajería Moderna</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        body {
+            background: #f0f2f5;
+            color: #333;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #login-container, #messenger-container {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+        #login-container {
+            padding: 40px;
+            width: 100%;
+            max-width: 400px;
+        }
+        #messenger-container {
+            display: none;
+            width: 100%;
+            max-width: 1000px;
+            height: 80vh;
+            flex-direction: row;
+        }
+        #sidebar {
+            width: 35%;
+            background: #fff;
+            padding: 20px;
+            border-right: 1px solid #e0e0e0;
+        }
+        #chat-area {
+            width: 65%;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+        #messages {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 15px;
+            background: #fafafa;
+            border-radius: 10px;
+            margin-bottom: 15px;
+        }
+        #contact-list {
+            list-style: none;
+        }
+        .contact {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .contact:hover {
+            background: #f5f5f5;
+        }
+        .message {
+            margin: 10px 0;
+            padding: 10px 15px;
+            border-radius: 15px;
+            max-width: 70%;
+            word-wrap: break-word;
+            display: flex;
+            align-items: center;
+        }
+        .message.me {
+            background: #0084ff;
+            color: white;
+            margin-left: auto;
+        }
+        .message.other {
+            background: #e9ecef;
+            color: #333;
+        }
+        .profile-pic {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            margin-right: 10px;
+            object-fit: cover;
+        }
+        input, button {
+            padding: 10px;
+            border: none;
+            border-radius: 8px;
+            margin: 5px 0;
+        }
+        input {
+            width: 100%;
+            background: #f5f5f5;
+        }
+        button {
+            background: #0084ff;
+            color: white;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: #0066cc;
+        }
+        #settings {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+        }
+        .user-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Login/Registro -->
+    <div id="login-container">
+        <h2>Iniciar Sesión / Registrarse</h2>
+        <input type="text" id="username" placeholder="Usuario">
+        <input type="password" id="password" placeholder="Contraseña">
+        <button onclick="login()">Iniciar Sesión</button>
+        <button onclick="register()">Registrarse</button>
+    </div>
+
+    <!-- Mensajería -->
+    <div id="messenger-container">
+        <div id="sidebar">
+            <div class="user-header">
+                <img id="my-profile-pic" class="profile-pic" src="https://via.placeholder.com/40" alt="Perfil">
+                <span id="my-username"></span>
+                <button onclick="showSettings()" style="margin-left: auto;">⚙️</button>
+            </div>
+            <input type="text" id="new-contact" placeholder="Agregar contacto">
+            <button onclick="addContact()">Agregar</button>
+            <ul id="contact-list"></ul>
+        </div>
+        <div id="chat-area">
+            <h3>Chat con <span id="current-contact"></span></h3>
+            <div id="messages"></div>
+            <input type="text" id="message-input" placeholder="Escribe un mensaje">
+            <button onclick="sendMessage()">Enviar</button>
+        </div>
+    </div>
+
+    <!-- Configuración -->
+    <div id="settings">
+        <h3>Configuración</h3>
+        <input type="file" id="profile-pic-input" accept="image/*">
+        <button onclick="updateProfilePic()">Actualizar Foto</button>
+        <button onclick="hideSettings()">Cerrar</button>
+    </div>
+
+    <script>
+        let currentUser = null;
+        let currentContact = null;
+        const BASE_URL = window.location.origin; // Usa la misma URL del backend en Railway
+
+        async function login() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const response = await fetch(`${BASE_URL}/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            if (response.ok) {
+                currentUser = username;
+                document.getElementById('login-container').style.display = 'none';
+                document.getElementById('messenger-container').style.display = 'flex';
+                document.getElementById('my-username').textContent = currentUser;
+                document.getElementById('my-profile-pic').src = 'https://via.placeholder.com/40'; // Temporal
+                loadContacts();
+            } else {
+                alert('Usuario o contraseña incorrectos');
+            }
+        }
+
+        async function register() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const response = await fetch(`${BASE_URL}/register`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            if (response.ok) {
+                alert('Usuario registrado con éxito');
+            } else {
+                alert('El usuario ya existe');
+            }
+        }
+
+        async function addContact() {
+            const contact = document.getElementById('new-contact').value;
+            const response = await fetch(`${BASE_URL}/contacts`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: currentUser, contact })
+            });
+            if (response.ok) {
+                loadContacts();
+            } else {
+                alert('Contacto no válido o ya agregado');
+            }
+        }
+
+        async function loadContacts() {
+            const response = await fetch(`${BASE_URL}/contacts/${currentUser}`);
+            const contacts = await response.json();
+            const contactList = document.getElementById('contact-list');
+            contactList.innerHTML = '';
+            contacts.forEach(contact => {
+                const li = document.createElement('li');
+                li.className = 'contact';
+                li.innerHTML = `<img src="https://via.placeholder.com/40" class="profile-pic">${contact}`;
+                li.onclick = () => selectContact(contact);
+                contactList.appendChild(li);
+            });
+        }
+
+        async function sendMessage() {
+            const messageInput = document.getElementById('message-input');
+            const text = messageInput.value;
+            if (text && currentContact) {
+                await fetch(`${BASE_URL}/messages`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sender: currentUser, receiver: currentContact, text })
+                });
+                messageInput.value = '';
+                loadMessages();
+            }
+        }
+
+        async function loadMessages() {
+            const messagesDiv = document.getElementById('messages');
+            messagesDiv.innerHTML = '';
+            if (currentContact) {
+                const response = await fetch(`${BASE_URL}/messages/${currentUser}/${currentContact}`);
+                const messages = await response.json();
+                messages.forEach(msg => {
+                    const div = document.createElement('div');
+                    div.className = `message ${msg.sender === currentUser ? 'me' : 'other'}`;
+                    div.innerHTML = `<img src="https://via.placeholder.com/40" class="profile-pic">${msg.text}`;
+                    messagesDiv.appendChild(div);
+                });
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            }
+        }
+
+        function selectContact(contact) {
+            currentContact = contact;
+            document.getElementById('current-contact').textContent = contact;
+            loadMessages();
+        }
+
+        function showSettings() {
+            document.getElementById('settings').style.display = 'block';
+        }
+
+        function hideSettings() {
+            document.getElementById('settings').style.display = 'none';
+        }
+
+        function updateProfilePic() {
+            const fileInput = document.getElementById('profile-pic-input');
+            const file = fileInput.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    document.getElementById('my-profile-pic').src = e.target.result;
+                    // Aquí deberías enviar la imagen al backend (endpoint pendiente)
+                    alert('Foto actualizada localmente. Pendiente de backend.');
+                };
+                reader.readAsDataURL(file);
+            }
+            hideSettings();
+        }
+    </script>
+</body>
+</html>
