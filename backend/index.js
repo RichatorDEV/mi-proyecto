@@ -6,7 +6,7 @@ const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../frontend')));
 
-// Inicializar las tablas con SERIAL para autoincremento
+// Inicializar las tablas con SERIAL y TIMESTAMP
 async function initializeDatabase() {
     try {
         await pool.query(`
@@ -76,6 +76,14 @@ app.post('/login', async (req, res) => {
 app.post('/contacts', async (req, res) => {
     const { username, contact } = req.body;
     try {
+        // Verificar que el contacto existe
+        const contactExists = await pool.query(
+            'SELECT 1 FROM users WHERE username = $1',
+            [contact]
+        );
+        if (contactExists.rows.length === 0) {
+            return res.status(400).json({ error: 'El contacto no existe' });
+        }
         const result = await pool.query(
             'INSERT INTO contacts (username, contact) VALUES ($1, $2) RETURNING *',
             [username, contact]
