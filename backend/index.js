@@ -240,10 +240,26 @@ app.get('/contacts/:username', async (req, res) => {
     }
 });
 
-// Enviar mensaje
+// Enviar mensaje (con adición automática de contacto)
 app.post('/messages', async (req, res) => {
     const { sender, receiver, text } = req.body;
     try {
+        // Verificar si el remitente ya está en los contactos del receptor
+        const contactCheck = await pool.query(
+            'SELECT 1 FROM contacts WHERE username = $1 AND contact = $2',
+            [receiver, sender]
+        );
+        
+        // Si no está, agregarlo automáticamente
+        if (contactCheck.rows.length === 0) {
+            await pool.query(
+                'INSERT INTO contacts (username, contact) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+                [receiver, sender]
+            );
+            console.log(`Contacto ${sender} añadido automáticamente a ${receiver}`);
+        }
+
+        // Insertar el mensaje
         const result = await pool.query(
             'INSERT INTO messages (sender, receiver, text) VALUES ($1, $2, $3) RETURNING *',
             [sender, receiver, text]
@@ -483,7 +499,6 @@ app.get('/group-members/:group_id', async (req, res) => {
 app.post('/delete-group', async (req, res) => {
     const { group_id, username } = req.body;
     try {
-        // Verificar si el grupo existe y si el usuario es el creador
         const creatorCheck = await pool.query(
             'SELECT creator FROM groups WHERE group_id = $1',
             [group_id]
@@ -495,32 +510,25 @@ app.post('/delete-group', async (req, res) => {
             return res.status(403).json({ error: 'Solo el creador puede eliminar el grupo' });
         }
 
-        // Obtener miembros para notificar antes de eliminar
         const membersResult = await pool.query(
             'SELECT username FROM group_members WHERE group_id = $1',
             [group_id]
         );
         const members = membersResult.rows.map(row => row.username);
 
-        // Eliminar mensajes del grupo
         await pool.query(
             'DELETE FROM group_messages WHERE group_id = $1',
             [group_id]
         );
-
-        // Eliminar miembros del grupo
         await pool.query(
             'DELETE FROM group_members WHERE group_id = $1',
             [group_id]
         );
-
-        // Eliminar el grupo
         await pool.query(
             'DELETE FROM groups WHERE group_id = $1',
             [group_id]
         );
 
-        // Notificar a los miembros vía WebSocket
         const notification = { type: 'group_deleted', group_id };
         members.forEach(member => {
             const clientWs = clients.get(member);
