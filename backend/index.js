@@ -64,7 +64,7 @@ app.post('/register', async (req, res) => {
     }
 });
 
-// Inicio de sesión (devolver también profile_pic)
+// Inicio de sesión
 app.post('/login', async (req, res) => {
     const { username, password } = req.body;
     try {
@@ -86,19 +86,41 @@ app.post('/login', async (req, res) => {
 // Actualizar foto de perfil
 app.post('/profile-pic', async (req, res) => {
     const { username, profilePic } = req.body;
+    console.log('Datos recibidos en /profile-pic:', { username, profilePic: profilePic ? 'base64 data' : 'null' });
     try {
         const result = await pool.query(
             'UPDATE users SET profile_pic = $1 WHERE username = $2 RETURNING *',
             [profilePic, username]
         );
         if (result.rows.length > 0) {
+            console.log('Foto de perfil actualizada para:', username);
             res.json(result.rows[0]);
         } else {
+            console.log('Usuario no encontrado:', username);
             res.status(404).json({ error: 'Usuario no encontrado' });
         }
     } catch (err) {
         console.error('Error en /profile-pic:', err.message);
         res.status(500).json({ error: 'Error interno del servidor: ' + err.message });
+    }
+});
+
+// Obtener foto de perfil de un usuario
+app.get('/profile-pic/:username', async (req, res) => {
+    const { username } = req.params;
+    try {
+        const result = await pool.query(
+            'SELECT profile_pic FROM users WHERE username = $1',
+            [username]
+        );
+        if (result.rows.length > 0) {
+            res.json({ profile_pic: result.rows[0].profile_pic });
+        } else {
+            res.status(404).json({ error: 'Usuario no encontrado' });
+        }
+    } catch (err) {
+        console.error('Error en /profile-pic/:username:', err.message);
+        res.status(500).json({ error: 'Error interno del servidor' });
     }
 });
 
