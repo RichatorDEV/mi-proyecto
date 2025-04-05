@@ -11,24 +11,33 @@ app.use((req, res, next) => {
     next();
 });
 
-// Inicializar las tablas
+// Inicializar las tablas (eliminar y recrear)
 async function initializeDatabase() {
     try {
+        // Eliminar tablas existentes
         await pool.query(`
-            CREATE TABLE IF NOT EXISTS users (
+            DROP TABLE IF EXISTS messages;
+            DROP TABLE IF EXISTS contacts;
+            DROP TABLE IF EXISTS users;
+        `);
+        console.log('Tablas existentes eliminadas');
+
+        // Crear tablas nuevas
+        await pool.query(`
+            CREATE TABLE users (
                 id SERIAL PRIMARY KEY,
                 username TEXT UNIQUE NOT NULL,
                 password TEXT NOT NULL,
                 profile_pic TEXT
             );
 
-            CREATE TABLE IF NOT EXISTS contacts (
+            CREATE TABLE contacts (
                 id SERIAL PRIMARY KEY,
                 username TEXT NOT NULL,
                 contact TEXT NOT NULL
             );
 
-            CREATE TABLE IF NOT EXISTS messages (
+            CREATE TABLE messages (
                 id SERIAL PRIMARY KEY,
                 sender TEXT NOT NULL,
                 receiver TEXT NOT NULL,
@@ -36,7 +45,7 @@ async function initializeDatabase() {
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         `);
-        console.log('Tablas creadas o verificadas con éxito');
+        console.log('Tablas creadas con éxito');
     } catch (err) {
         console.error('Error al inicializar la base de datos:', err.message);
     }
@@ -137,7 +146,7 @@ app.post('/messages', async (req, res) => {
 
 // Obtener mensajes
 app.get('/messages/:sender/:receiver', async (req, res) => {
-    const { sender, receiver } = req.params;
+    const { username } = req.params;
     try {
         const result = await pool.query(
             'SELECT * FROM messages WHERE (sender = $1 AND receiver = $2) OR (sender = $2 AND receiver = $1) ORDER BY timestamp',
