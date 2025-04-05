@@ -1,10 +1,15 @@
 const express = require('express');
 const pool = require('./db');
-const path = require('path');
 const app = express();
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '../frontend')));
+
+// Configurar CORS para permitir solicitudes desde GitHub Pages
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*'); // O especifica tu URL de GitHub Pages
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+    next();
+});
 
 // Inicializar las tablas con SERIAL y TIMESTAMP
 async function initializeDatabase() {
@@ -134,11 +139,6 @@ app.get('/messages/:sender/:receiver', async (req, res) => {
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
-});
-
-// Servir el frontend
-app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../frontend/index.html'));
 });
 
 const PORT = process.env.PORT || 3000;
