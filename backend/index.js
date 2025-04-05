@@ -479,6 +479,63 @@ app.get('/group-members/:group_id', async (req, res) => {
     }
 });
 
+// Eliminar un grupo
+app.post('/delete-group', async (req, res) => {
+    const { group_id, username } = req.body;
+    try {
+        // Verificar si el grupo existe y si el usuario es el creador
+        const creatorCheck = await pool.query(
+            'SELECT creator FROM groups WHERE group_id = $1',
+            [group_id]
+        );
+        if (creatorCheck.rows.length === 0) {
+            return res.status(404).json({ error: 'Grupo no encontrado' });
+        }
+        if (creatorCheck.rows[0].creator !== username) {
+            return res.status(403).json({ error: 'Solo el creador puede eliminar el grupo' });
+        }
+
+        // Obtener miembros para notificar antes de eliminar
+        const membersResult = await pool.query(
+            'SELECT username FROM group_members WHERE group_id = $1',
+            [group_id]
+        );
+        const members = membersResult.rows.map(row => row.username);
+
+        // Eliminar mensajes del grupo
+        await pool.query(
+            'DELETE FROM group_messages WHERE group_id = $1',
+            [group_id]
+        );
+
+        // Eliminar miembros del grupo
+        await pool.query(
+            'DELETE FROM group_members WHERE group_id = $1',
+            [group_id]
+        );
+
+        // Eliminar el grupo
+        await pool.query(
+            'DELETE FROM groups WHERE group_id = $1',
+            [group_id]
+        );
+
+        // Notificar a los miembros vía WebSocket
+        const notification = { type: 'group_deleted', group_id };
+        members.forEach(member => {
+            const clientWs = clients.get(member);
+            if (clientWs && clientWs.readyState === clientWs.OPEN) {
+                clientWs.send(JSON.stringify(notification));
+            }
+        });
+
+        res.json({ message: 'Grupo eliminado con éxito' });
+    } catch (err) {
+        console.error('Error en /delete-group:', err.message);
+        res.status(500).json({ error: 'Error interno del servidor: ' + err.message });
+    }
+});
+
 // Iniciar servidor
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
