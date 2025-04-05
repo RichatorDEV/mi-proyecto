@@ -294,11 +294,15 @@ app.get('/group_messages/:group_id', async (req, res) => {
 // Actualizar foto del grupo
 app.post('/group-pic', async (req, res) => {
     const { group_id, group_pic, username } = req.body;
+    console.log('Datos recibidos en /group-pic:', { group_id, group_pic: group_pic ? 'base64 data' : 'null', username });
     try {
         const creatorCheck = await pool.query(
             'SELECT creator FROM groups WHERE group_id = $1',
             [group_id]
         );
+        if (creatorCheck.rows.length === 0) {
+            return res.status(404).json({ error: 'Grupo no encontrado' });
+        }
         if (creatorCheck.rows[0].creator !== username) {
             return res.status(403).json({ error: 'Solo el creador puede modificar el grupo' });
         }
@@ -306,10 +310,11 @@ app.post('/group-pic', async (req, res) => {
             'UPDATE groups SET group_pic = $1 WHERE group_id = $2 RETURNING *',
             [group_pic, group_id]
         );
+        console.log('Resultado de la actualización:', result.rows[0]);
         res.json(result.rows[0]);
     } catch (err) {
         console.error('Error en /group-pic:', err.message);
-        res.status(500).json({ error: 'Error interno del servidor' });
+        res.status(500).json({ error: 'Error interno del servidor: ' + err.message });
     }
 });
 
