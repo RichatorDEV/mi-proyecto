@@ -6,38 +6,29 @@ app.use(express.json());
 
 // Configurar CORS
 app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*'); // O tu URL de GitHub Pages
+    res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
     next();
 });
 
-// Inicializar las tablas (eliminar y recrear)
+// Inicializar las tablas
 async function initializeDatabase() {
     try {
-        // Eliminar tablas existentes
         await pool.query(`
-            DROP TABLE IF EXISTS messages;
-            DROP TABLE IF EXISTS contacts;
-            DROP TABLE IF EXISTS users;
-        `);
-        console.log('Tablas existentes eliminadas');
-
-        // Crear tablas nuevas
-        await pool.query(`
-            CREATE TABLE users (
+            CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
                 username TEXT UNIQUE NOT NULL,
                 password TEXT NOT NULL,
                 profile_pic TEXT
             );
 
-            CREATE TABLE contacts (
+            CREATE TABLE IF NOT EXISTS contacts (
                 id SERIAL PRIMARY KEY,
                 username TEXT NOT NULL,
                 contact TEXT NOT NULL
             );
 
-            CREATE TABLE messages (
+            CREATE TABLE IF NOT EXISTS messages (
                 id SERIAL PRIMARY KEY,
                 sender TEXT NOT NULL,
                 receiver TEXT NOT NULL,
@@ -45,13 +36,13 @@ async function initializeDatabase() {
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         `);
-        console.log('Tablas creadas con éxito');
+        console.log('Tablas creadas o verificadas con éxito');
     } catch (err) {
         console.error('Error al inicializar la base de datos:', err.message);
     }
 }
 
-// Ejecutar la inicialización al arrancar
+// Ejecutar al arrancar
 initializeDatabase();
 
 // Registro de usuario
@@ -64,21 +55,21 @@ app.post('/register', async (req, res) => {
         );
         res.json(result.rows[0]);
     } catch (err) {
-        if (err.code === '23505') { // Violación de unicidad en PostgreSQL
+        if (err.code === '23505') {
             res.status(400).json({ error: 'El usuario ya existe' });
         } else {
             console.error('Error en /register:', err.message);
-            res.status(500).json({ error: 'Error interno del servidor' });
+            res.status(500).json({ error: 'Error interno del servidor: ' + err.message });
         }
     }
 });
 
-// Inicio de sesión
+// Inicio de sesión (devolver también profile_pic)
 app.post('/login', async (req, res) => {
     const { username, password } = req.body;
     try {
         const result = await pool.query(
-            'SELECT * FROM users WHERE username = $1 AND password = $2',
+            'SELECT id, username, profile_pic FROM users WHERE username = $1 AND password = $2',
             [username, password]
         );
         if (result.rows.length > 0) {
@@ -89,6 +80,25 @@ app.post('/login', async (req, res) => {
     } catch (err) {
         console.error('Error en /login:', err.message);
         res.status(500).json({ error: 'Error interno del servidor' });
+    }
+});
+
+// Actualizar foto de perfil
+app.post('/profile-pic', async (req, res) => {
+    const { username, profilePic } = req.body;
+    try {
+        const result = await pool.query(
+            'UPDATE users SET profile_pic = $1 WHERE username = $2 RETURNING *',
+            [profilePic, username]
+        );
+        if (result.rows.length > 0) {
+            res.json(result.rows[0]);
+        } else {
+            res.status(404).json({ error: 'Usuario no encontrado' });
+        }
+    } catch (err) {
+        console.error('Error en /profile-pic:', err.message);
+        res.status(500).json({ error: 'Error interno del servidor: ' + err.message });
     }
 });
 
@@ -146,7 +156,7 @@ app.post('/messages', async (req, res) => {
 
 // Obtener mensajes
 app.get('/messages/:sender/:receiver', async (req, res) => {
-    const { username } = req.params;
+    const { sender, receiver } = req.params;
     try {
         const result = await pool.query(
             'SELECT * FROM messages WHERE (sender = $1 AND receiver = $2) OR (sender = $2 AND receiver = $1) ORDER BY timestamp',
