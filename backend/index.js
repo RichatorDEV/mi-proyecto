@@ -38,7 +38,10 @@ async function initializeDatabase() {
 
             CREATE TABLE IF NOT EXISTS groups (
                 group_id SERIAL PRIMARY KEY,
-                group_name TEXT UNIQUE NOT NULL
+                group_name TEXT UNIQUE NOT NULL,
+                creator TEXT NOT NULL,
+                group_pic TEXT,
+                FOREIGN KEY (creator) REFERENCES users(username)
             );
 
             CREATE TABLE IF NOT EXISTS group_members (
@@ -218,14 +221,12 @@ app.get('/messages/:sender/:receiver', async (req, res) => {
 app.post('/groups', async (req, res) => {
     const { group_name, members, creator } = req.body;
     try {
-        // Crear el grupo
         const groupResult = await pool.query(
-            'INSERT INTO groups (group_name) VALUES ($1) RETURNING group_id',
-            [group_name]
+            'INSERT INTO groups (group_name, creator) VALUES ($1, $2) RETURNING group_id',
+            [group_name, creator]
         );
         const group_id = groupResult.rows[0].group_id;
 
-        // Añadir miembros (incluyendo al creador)
         const allMembers = [...members, creator];
         for (const member of allMembers) {
             await pool.query(
@@ -250,7 +251,7 @@ app.get('/groups/:username', async (req, res) => {
     const { username } = req.params;
     try {
         const result = await pool.query(
-            'SELECT g.group_id, g.group_name FROM groups g JOIN group_members gm ON g.group_id = gm.group_id WHERE gm.username = $1',
+            'SELECT g.group_id, g.group_name, g.group_pic, g.creator FROM groups g JOIN group_members gm ON g.group_id = gm.group_id WHERE gm.username = $1',
             [username]
         );
         res.json(result.rows);
@@ -286,6 +287,123 @@ app.get('/group_messages/:group_id', async (req, res) => {
         res.json(result.rows);
     } catch (err) {
         console.error('Error en /group_messages/:group_id:', err.message);
+        res.status(500).json({ error: 'Error interno del servidor' });
+    }
+});
+
+// Actualizar foto del grupo
+app.post('/group-pic', async (req, res) => {
+    const { group_id, group_pic, username } = req.body;
+    try {
+        const creatorCheck = await pool.query(
+            'SELECT creator FROM groups WHERE group_id = $1',
+            [group_id]
+        );
+        if (creatorCheck.rows[0].creator !== username) {
+            return res.status(403).json({ error: 'Solo el creador puede modificar el grupo' });
+        }
+        const result = await pool.query(
+            'UPDATE groups SET group_pic = $1 WHERE group_id = $2 RETURNING *',
+            [group_pic, group_id]
+        );
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error('Error en /group-pic:', err.message);
+        res.status(500).json({ error: 'Error interno del servidor' });
+    }
+});
+
+// Actualizar nombre del grupo
+app.post('/group-name', async (req, res) => {
+    const { group_id, group_name, username } = req.body;
+    try {
+        const creatorCheck = await pool.query(
+            'SELECT creator FROM groups WHERE group_id = $1',
+            [group_id]
+        );
+        if (creatorCheck.rows[0].creator !== username) {
+            return res.status(403).json({ error: 'Solo el creador puede modificar el grupo' });
+        }
+        const result = await pool.query(
+            'UPDATE groups SET group_name = $1 WHERE group_id = $2 RETURNING *',
+            [group_name, group_id]
+        );
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error('Error en /group-name:', err.message);
+        if (err.code === '23505') {
+            res.status(400).json({ error: 'El nombre del grupo ya existe' });
+        } else {
+            res.status(500).json({ error: 'Error interno del servidor' });
+        }
+    }
+});
+
+// Añadir miembro al grupo
+app.post('/group-add-member', async (req, res) => {
+    const { group_id, username, new_member } = req.body;
+    try {
+        const creatorCheck = await pool.query(
+            'SELECT creator FROM groups WHERE group_id = $1',
+            [group_id]
+        );
+        if (creatorCheck.rows[0].creator !== username) {
+            return res.status(403).json({ error: 'Solo el creador puede modificar el grupo' });
+        }
+        const memberExists = await pool.query(
+            'SELECT 1 FROM users WHERE username = $1',
+            [new_member]
+        );
+        if (memberExists.rows.length === 0) {
+            return res.status(400).json({ error: 'El usuario no existe' });
+        }
+        await pool.query(
+            'INSERT INTO group_members (group_id, username) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+            [group_id, new_member]
+        );
+        res.json({ message: 'Miembro añadido' });
+    } catch (err) {
+        console.error('Error en /group-add-member:', err.message);
+        res.status(500).json({ error: 'Error interno del servidor' });
+    }
+});
+
+// Expulsar miembro del grupo
+app.post('/group-remove-member', async (req, res) => {
+    const { group_id, username, member_to_remove } = req.body;
+    try {
+        const creatorCheck = await pool.query(
+            'SELECT creator FROM groups WHERE group_id = $1',
+            [group_id]
+        );
+        if (creatorCheck.rows[0].creator !== username) {
+            return res.status(403).json({ error: 'Solo el creador puede modificar el grupo' });
+        }
+        if (member_to_remove === creatorCheck.rows[0].creator) {
+            return res.status(400).json({ error: 'No puedes expulsarte a ti mismo como creador' });
+        }
+        await pool.query(
+            'DELETE FROM group_members WHERE group_id = $1 AND username = $2',
+            [group_id, member_to_remove]
+        );
+        res.json({ message: 'Miembro expulsado' });
+    } catch (err) {
+        console.error('Error en /group-remove-member:', err.message);
+        res.status(500).json({ error: 'Error interno del servidor' });
+    }
+});
+
+// Obtener miembros del grupo
+app.get('/group-members/:group_id', async (req, res) => {
+    const { group_id } = req.params;
+    try {
+        const result = await pool.query(
+            'SELECT username FROM group_members WHERE group_id = $1',
+            [group_id]
+        );
+        res.json(result.rows.map(row => row.username));
+    } catch (err) {
+        console.error('Error en /group-members/:group_id:', err.message);
         res.status(500).json({ error: 'Error interno del servidor' });
     }
 });
