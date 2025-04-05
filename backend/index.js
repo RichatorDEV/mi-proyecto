@@ -4,14 +4,14 @@ const app = express();
 
 app.use(express.json());
 
-// Configurar CORS para permitir solicitudes desde GitHub Pages
+// Configurar CORS
 app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*'); // O especifica tu URL de GitHub Pages
+    res.header('Access-Control-Allow-Origin', '*'); // O tu URL de GitHub Pages
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
     next();
 });
 
-// Inicializar las tablas con SERIAL y TIMESTAMP
+// Inicializar las tablas
 async function initializeDatabase() {
     try {
         await pool.query(`
@@ -55,7 +55,12 @@ app.post('/register', async (req, res) => {
         );
         res.json(result.rows[0]);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        if (err.code === '23505') { // Violación de unicidad en PostgreSQL
+            res.status(400).json({ error: 'El usuario ya existe' });
+        } else {
+            console.error('Error en /register:', err.message);
+            res.status(500).json({ error: 'Error interno del servidor' });
+        }
     }
 });
 
@@ -73,7 +78,8 @@ app.post('/login', async (req, res) => {
             res.status(401).json({ error: 'Credenciales inválidas' });
         }
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error('Error en /login:', err.message);
+        res.status(500).json({ error: 'Error interno del servidor' });
     }
 });
 
@@ -81,7 +87,6 @@ app.post('/login', async (req, res) => {
 app.post('/contacts', async (req, res) => {
     const { username, contact } = req.body;
     try {
-        // Verificar que el contacto existe
         const contactExists = await pool.query(
             'SELECT 1 FROM users WHERE username = $1',
             [contact]
@@ -95,7 +100,8 @@ app.post('/contacts', async (req, res) => {
         );
         res.json(result.rows[0]);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error('Error en /contacts:', err.message);
+        res.status(500).json({ error: 'Error interno del servidor' });
     }
 });
 
@@ -109,7 +115,8 @@ app.get('/contacts/:username', async (req, res) => {
         );
         res.json(result.rows.map(row => row.contact));
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error('Error en /contacts/:username:', err.message);
+        res.status(500).json({ error: 'Error interno del servidor' });
     }
 });
 
@@ -123,7 +130,8 @@ app.post('/messages', async (req, res) => {
         );
         res.json(result.rows[0]);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error('Error en /messages:', err.message);
+        res.status(500).json({ error: 'Error interno del servidor' });
     }
 });
 
@@ -137,7 +145,8 @@ app.get('/messages/:sender/:receiver', async (req, res) => {
         );
         res.json(result.rows);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error('Error en /messages/:sender/:receiver:', err.message);
+        res.status(500).json({ error: 'Error interno del servidor' });
     }
 });
 
