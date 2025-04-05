@@ -1,6 +1,11 @@
 const express = require('express');
-const pool = require('./db');
+const { WebSocketServer } = require('ws');
+const http = require('http');
+const pool = require('./db'); // Asegúrate de que ./db esté configurado para PostgreSQL
+
 const app = express();
+const server = http.createServer(app);
+const wss = new WebSocketServer({ server });
 
 app.use(express.json());
 
@@ -70,6 +75,54 @@ async function initializeDatabase() {
 
 // Ejecutar al arrancar
 initializeDatabase();
+
+// Manejo de WebSockets
+const clients = new Map(); // Mapa de username -> WebSocket
+
+wss.on('connection', (ws, req) => {
+    const urlParams = new URLSearchParams(req.url.split('?')[1]);
+    const username = urlParams.get('username');
+    if (username) {
+        clients.set(username, ws);
+        console.log(`Usuario ${username} conectado vía WebSocket`);
+    }
+
+    ws.on('close', () => {
+        clients.delete(username);
+        console.log(`Usuario ${username} desconectado del WebSocket`);
+    });
+
+    ws.on('error', (err) => {
+        console.error(`Error en WebSocket para ${username}:`, err);
+    });
+});
+
+function notifyMessage(message) {
+    if (message.group_id) {
+        // Notificar a todos los miembros del grupo
+        pool.query('SELECT username FROM group_members WHERE group_id = $1', [message.group_id])
+            .then(result => {
+                const members = result.rows.map(row => row.username);
+                members.forEach(member => {
+                    const clientWs = clients.get(member);
+                    if (clientWs && clientWs.readyState === clientWs.OPEN) {
+                        clientWs.send(JSON.stringify(message));
+                    }
+                });
+            })
+            .catch(err => console.error('Error al obtener miembros del grupo:', err.message));
+    } else {
+        // Notificar al receptor y al remitente (si están conectados)
+        const receiverWs = clients.get(message.receiver);
+        const senderWs = clients.get(message.sender);
+        if (receiverWs && receiverWs.readyState === receiverWs.OPEN) {
+            receiverWs.send(JSON.stringify(message));
+        }
+        if (senderWs && senderWs.readyState === senderWs.OPEN && message.sender !== message.receiver) {
+            senderWs.send(JSON.stringify(message));
+        }
+    }
+}
 
 // Registro de usuario
 app.post('/register', async (req, res) => {
@@ -195,7 +248,9 @@ app.post('/messages', async (req, res) => {
             'INSERT INTO messages (sender, receiver, text) VALUES ($1, $2, $3) RETURNING *',
             [sender, receiver, text]
         );
-        res.json(result.rows[0]);
+        const message = result.rows[0];
+        notifyMessage(message); // Notificar vía WebSocket
+        res.json(message);
     } catch (err) {
         console.error('Error en /messages:', err.message);
         res.status(500).json({ error: 'Error interno del servidor' });
@@ -272,7 +327,9 @@ app.post('/group_messages', async (req, res) => {
             'INSERT INTO group_messages (group_id, sender, text) VALUES ($1, $2, $3) RETURNING *',
             [group_id, sender, text]
         );
-        res.json(result.rows[0]);
+        const message = result.rows[0];
+        notifyMessage(message); // Notificar vía WebSocket
+        res.json(message);
     } catch (err) {
         console.error('Error en /group_messages:', err.message);
         res.status(500).json({ error: 'Error interno del servidor' });
@@ -422,5 +479,8 @@ app.get('/group-members/:group_id', async (req, res) => {
     }
 });
 
+// Iniciar servidor
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Servidor corriendo en puerto ${PORT}`));
+server.listen(PORT, () => {
+    console.log(`Servidor corriendo en puerto ${PORT}`);
+});
