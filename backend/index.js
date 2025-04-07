@@ -13,6 +13,7 @@ app.use(express.json());
 app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
     next();
 });
 
@@ -225,14 +226,19 @@ app.post('/contacts', async (req, res) => {
     }
 });
 
-// Obtener contactos
+// Obtener contactos con paginación
 app.get('/contacts/:username', async (req, res) => {
     const { username } = req.params;
+    const { page = 1, limit = 10 } = req.query; // Paginación: página 1, 10 contactos por página por defecto
+    console.log('GET /contacts/:username - Solicitando contactos para:', username, 'Página:', page, 'Límite:', limit);
+
     try {
+        const offset = (page - 1) * limit;
         const result = await pool.query(
-            'SELECT contact FROM contacts WHERE username = $1',
-            [username]
+            'SELECT contact FROM contacts WHERE username = $1 ORDER BY contact LIMIT $2 OFFSET $3',
+            [username, limit, offset]
         );
+        console.log('Contactos enviados:', result.rows);
         res.json(result.rows.map(row => row.contact));
     } catch (err) {
         console.error('Error en /contacts/:username:', err.message);
@@ -244,13 +250,10 @@ app.get('/contacts/:username', async (req, res) => {
 app.post('/messages', async (req, res) => {
     const { sender, receiver, text } = req.body;
     try {
-        // Verificar si el remitente ya está en los contactos del receptor
         const contactCheck = await pool.query(
             'SELECT 1 FROM contacts WHERE username = $1 AND contact = $2',
             [receiver, sender]
         );
-        
-        // Si no está, agregarlo automáticamente
         if (contactCheck.rows.length === 0) {
             await pool.query(
                 'INSERT INTO contacts (username, contact) VALUES ($1, $2) ON CONFLICT DO NOTHING',
@@ -259,13 +262,12 @@ app.post('/messages', async (req, res) => {
             console.log(`Contacto ${sender} añadido automáticamente a ${receiver}`);
         }
 
-        // Insertar el mensaje
         const result = await pool.query(
             'INSERT INTO messages (sender, receiver, text) VALUES ($1, $2, $3) RETURNING *',
             [sender, receiver, text]
         );
         const message = result.rows[0];
-        notifyMessage(message); // Notificar vía WebSocket
+        notifyMessage(message);
         res.json(message);
     } catch (err) {
         console.error('Error en /messages:', err.message);
@@ -344,7 +346,7 @@ app.post('/group_messages', async (req, res) => {
             [group_id, sender, text]
         );
         const message = result.rows[0];
-        notifyMessage(message); // Notificar vía WebSocket
+        notifyMessage(message);
         res.json(message);
     } catch (err) {
         console.error('Error en /group_messages:', err.message);
