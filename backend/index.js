@@ -78,7 +78,7 @@ async function initializeDatabase() {
 initializeDatabase();
 
 // Manejo de WebSockets
-const clients = new Map(); // Mapa de username -> WebSocket
+const clients = new Map();
 
 wss.on('connection', (ws, req) => {
     const urlParams = new URLSearchParams(req.url.split('?')[1]);
@@ -100,7 +100,6 @@ wss.on('connection', (ws, req) => {
 
 function notifyMessage(message) {
     if (message.group_id) {
-        // Notificar a todos los miembros del grupo
         pool.query('SELECT username FROM group_members WHERE group_id = $1', [message.group_id])
             .then(result => {
                 const members = result.rows.map(row => row.username);
@@ -113,7 +112,6 @@ function notifyMessage(message) {
             })
             .catch(err => console.error('Error al obtener miembros del grupo:', err.message));
     } else {
-        // Notificar al receptor y al remitente (si están conectados)
         const receiverWs = clients.get(message.receiver);
         const senderWs = clients.get(message.sender);
         if (receiverWs && receiverWs.readyState === receiverWs.OPEN) {
@@ -229,7 +227,7 @@ app.post('/contacts', async (req, res) => {
 // Obtener contactos con paginación
 app.get('/contacts/:username', async (req, res) => {
     const { username } = req.params;
-    const { page = 1, limit = 10 } = req.query; // Paginación: página 1, 10 contactos por página por defecto
+    const { page = 1, limit = 10 } = req.query;
     console.log('GET /contacts/:username - Solicitando contactos para:', username, 'Página:', page, 'Límite:', limit);
 
     try {
