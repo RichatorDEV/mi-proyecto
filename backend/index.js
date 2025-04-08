@@ -247,7 +247,6 @@ app.get('/contacts/:username', async (req, res) => {
         const contacts = result.rows.map(row => row.contact);
         console.log('Contactos encontrados en la base de datos:', contacts);
         
-        // Si no hay contactos, devolver un array vacío pero con logs claros
         if (contacts.length === 0) {
             console.log(`No se encontraron contactos para ${username} en la página ${page}`);
         }
@@ -343,6 +342,7 @@ app.get('/groups/:username', async (req, res) => {
             'SELECT g.group_id, g.group_name, g.group_pic, g.creator FROM groups g JOIN group_members gm ON g.group_id = gm.group_id WHERE gm.username = $1',
             [username]
         );
+        console.log('Grupos encontrados para', username, ':', result.rows);
         res.json(result.rows);
     } catch (err) {
         console.error('Error en /groups/:username:', err.message);
