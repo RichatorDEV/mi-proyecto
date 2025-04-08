@@ -245,7 +245,13 @@ app.get('/contacts/:username', async (req, res) => {
             [username, limit, offset]
         );
         const contacts = result.rows.map(row => row.contact);
-        console.log('Contactos enviados:', contacts);
+        console.log('Contactos encontrados en la base de datos:', contacts);
+        
+        // Si no hay contactos, devolver un array vacío pero con logs claros
+        if (contacts.length === 0) {
+            console.log(`No se encontraron contactos para ${username} en la página ${page}`);
+        }
+        
         res.json(contacts);
     } catch (err) {
         console.error('Error en /contacts/:username:', err.message);
@@ -401,7 +407,7 @@ app.post('/group-pic', async (req, res) => {
             'UPDATE groups SET group_pic = $1 WHERE group_id = $2 RETURNING *',
             [group_pic, group_id]
         );
-        console.log('Foto actualizada con éxito:', result.rows[0]); // Línea corregida
+        console.log('Foto actualizada con éxito:', result.rows[0]);
         res.json(result.rows[0]);
     } catch (err) {
         console.error('Error en /group-pic:', err.message);
