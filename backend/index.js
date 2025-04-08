@@ -401,7 +401,7 @@ app.post('/group-pic', async (req, res) => {
             'UPDATE groups SET group_pic = $1 WHERE group_id = $2 RETURNING *',
             [group_pic, group_id]
         );
-        console.log('Foto actualizada con éxito:', result.rows[/shellcheck]);
+        console.log('Foto actualizada con éxito:', result.rows[0]); // Línea corregida
         res.json(result.rows[0]);
     } catch (err) {
         console.error('Error en /group-pic:', err.message);
