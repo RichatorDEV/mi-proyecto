@@ -31,7 +31,8 @@ async function initializeDatabase() {
             CREATE TABLE IF NOT EXISTS contacts (
                 id SERIAL PRIMARY KEY,
                 username TEXT NOT NULL,
-                contact TEXT NOT NULL
+                contact TEXT NOT NULL,
+                UNIQUE (username, contact)
             );
 
             CREATE TABLE IF NOT EXISTS messages (
@@ -205,22 +206,29 @@ app.get('/profile-pic/:username', async (req, res) => {
 // Agregar contacto
 app.post('/contacts', async (req, res) => {
     const { username, contact } = req.body;
+    console.log('Solicitud para agregar contacto:', { username, contact });
     try {
         const contactExists = await pool.query(
             'SELECT 1 FROM users WHERE username = $1',
             [contact]
         );
         if (contactExists.rows.length === 0) {
+            console.log('El contacto no existe:', contact);
             return res.status(400).json({ error: 'El contacto no existe' });
         }
         const result = await pool.query(
-            'INSERT INTO contacts (username, contact) VALUES ($1, $2) RETURNING *',
+            'INSERT INTO contacts (username, contact) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING *',
             [username, contact]
         );
+        console.log('Contacto agregado:', result.rows[0]);
         res.json(result.rows[0]);
     } catch (err) {
         console.error('Error en /contacts:', err.message);
-        res.status(500).json({ error: 'Error interno del servidor' });
+        if (err.code === '23505') {
+            res.status(400).json({ error: 'El contacto ya está en la lista' });
+        } else {
+            res.status(500).json({ error: 'Error interno del servidor' });
+        }
     }
 });
 
@@ -236,11 +244,12 @@ app.get('/contacts/:username', async (req, res) => {
             'SELECT contact FROM contacts WHERE username = $1 ORDER BY contact LIMIT $2 OFFSET $3',
             [username, limit, offset]
         );
-        console.log('Contactos enviados:', result.rows);
-        res.json(result.rows.map(row => row.contact));
+        const contacts = result.rows.map(row => row.contact);
+        console.log('Contactos enviados:', contacts);
+        res.json(contacts);
     } catch (err) {
         console.error('Error en /contacts/:username:', err.message);
-        res.status(500).json({ error: 'Error interno del servidor' });
+        res.status(500).json({ error: 'Error interno del servidor: ' + err.message });
     }
 });
 
@@ -392,7 +401,7 @@ app.post('/group-pic', async (req, res) => {
             'UPDATE groups SET group_pic = $1 WHERE group_id = $2 RETURNING *',
             [group_pic, group_id]
         );
-        console.log('Foto actualizada con éxito:', result.rows[0]);
+        console.log('Foto actualizada con éxito:', result.rows[/shellcheck]);
         res.json(result.rows[0]);
     } catch (err) {
         console.error('Error en /group-pic:', err.message);
